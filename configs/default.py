@@ -67,7 +67,9 @@ default_config = dict(
         docker=False, # TODO docker is not yet supported
         #machine='non_mujoco' #non_mujoco or mujoco, when non_mujoco is chosen, can train offline in non-mujoco environments
     ),
-    algo_type='gentle'
+    algo_type='gentle',
+    encoder_type = 'mlp',
+    
 )
 
 

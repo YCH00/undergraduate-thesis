@@ -14,6 +14,11 @@ from rlkit.core.rl_algorithm import OfflineMetaRLAlgorithm
 from rlkit.data_management.env_replay_buffer import MultiTaskContextBuffer
 from itertools import chain
 
+def set_module_mode(module, mode=False):
+    for p in module.parameters():
+        p.requires_grad = mode
+
+
 class GENTLE(OfflineMetaRLAlgorithm):
     def __init__(
             self,
@@ -65,7 +70,7 @@ class GENTLE(OfflineMetaRLAlgorithm):
         self.target_qf1 = copy.deepcopy(self.qf1)
         self.target_qf2 = copy.deepcopy(self.qf2)
         self.context_decoder = nets[3]
-        self.task_dynamics = nets[4]
+        # self.task_dynamics = nets[4]
         self.policy_optimizer               = optimizer_class(self.agent.policy.parameters(), lr=self.policy_lr)
         self.qf1_optimizer                  = optimizer_class(self.qf1.parameters(), lr=self.qf_lr)
         self.qf2_optimizer                  = optimizer_class(self.qf2.parameters(), lr=self.qf_lr)
@@ -76,6 +81,10 @@ class GENTLE(OfflineMetaRLAlgorithm):
         self._visit_num_steps_train         = 10
 
         self.relabel_buffer     = MultiTaskContextBuffer(self.relabel_buffer_size, env, self.train_tasks, kwargs['context_dim'])
+
+        # freeze encoder and decoder
+        set_module_mode(self.agent.context_encoder, False)
+        set_module_mode(self.context_decoder, False)
 
     ###### Torch stuff #####
     @property
@@ -262,17 +271,66 @@ class GENTLE(OfflineMetaRLAlgorithm):
             return False
     
     def _take_step(self, indices, context):
+        # context: [num_tasks, context_batch, obs_dim+action_dim+reward_dim]
         obs_dim = int(np.prod(self.env.observation_space.shape))
         action_dim = int(np.prod(self.env.action_space.shape))
         reward_in_context = context[:, :, obs_dim + action_dim].cpu().numpy()
         self.loss["non_sparse_ratio"] = len(reward_in_context[np.nonzero(reward_in_context)]) / np.size(reward_in_context)
 
         num_tasks = len(indices)
-        # data is (task, batch, feat)
+        # data is (num_tasks, batch_size, dim)
         obs, actions, rewards, next_obs, terms = self.sample_sac(indices)
 
-        policy_outputs, task_z, task_z_vars= self.agent(obs, context, task_indices=indices)
+        # policy_outputs, task_z, task_z_vars= self.agent(obs, context, task_indices=indices)
+        # new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
+        
+        # encoder 输出每个任务的表征
+        policy_outputs, z, _ = self.agent(
+            obs=obs,              # SAC 用不到 obs 时可以传 None
+            context=context,
+            task_indices=indices
+        )
         new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
+            
+        perm = torch.randperm(num_tasks, device=z.device)
+        z_perm = z[perm]  # (z, z_perm)即为随机配对的(z_i, z_j)
+        alpha = torch.rand(num_tasks, 1, device=z.device)
+        z_t = (1.0 - alpha) * z + alpha * z_perm
+        
+        num_tasks, batch_size, _ = obs.shape
+        z_t_expanded = z_t.unsqueeze(1).expand(-1, batch_size, -1).reshape(num_tasks * batch_size, -1)  # z_t_expanded: [num_tasks, batch_size, z_dim]
+        
+        action_tilde = self.agent.get_target_policy_action(
+            obs = obs,
+            context = None,
+            task_indices = indices,
+            given_z = z_t_expanded)
+
+        # YinCH_todo: 这里 FOCAL_Decoder 似乎并没有forward函数  -- done
+        next_obs_tilde, reward_tilde = self.context_decoder(
+            obs,
+            action_tilde,
+            z_t_expanded
+        )
+        # until now, we have (obs, action_tilde, reward_tilde, next_obs_tilde)
+        # virtual_context: [num_tasks, batch_size, obs_dim + action_dim + reward_dim + obs_dim]
+        virtual_context = torch.cat(
+            [obs, action_tilde, reward_tilde, next_obs_tilde],
+            dim=-1
+        )
+        
+        # z_hat: [num_tasks, z_dim]
+        _, z_hat, _ = self.agent(
+            obs=None,
+            context=virtual_context,
+            task_indices=indices
+        )
+        consistency_loss = F.mse_loss(z_hat, z_t)
+        self.policy_optimizer.zero_grad()
+        consistency_loss.backward()
+        self.policy_optimizer.step()
+
+
 
         with torch.no_grad():
             next_actions = self.agent.get_target_policy_action(next_obs, context, task_indices=indices)	
@@ -290,7 +348,7 @@ class GENTLE(OfflineMetaRLAlgorithm):
 
 
         r_next_s = context[...,obs_dim+action_dim:]
-        pred_r_next_s = self.context_decoder(context[...,:obs_dim], context[...,obs_dim:obs_dim+action_dim], task_z.reshape(c_mb,c_b,-1))
+        pred_r_next_s = self.context_decoder(context[...,:obs_dim], context[...,obs_dim:obs_dim+action_dim], z.reshape(c_mb,c_b,-1))
         recon_loss = torch.mean((r_next_s - pred_r_next_s)**2)
         context_loss = self.recon_loss_weight * recon_loss
         self.loss['recon_loss'] = recon_loss.item()
@@ -299,11 +357,11 @@ class GENTLE(OfflineMetaRLAlgorithm):
         context_loss.backward(retain_graph=True)
         self.context_optimizer.step()
         
-        q1_pred = self.qf1(t, b, obs, actions, task_z.detach())
-        q2_pred = self.qf2(t, b, obs, actions, task_z.detach())
+        q1_pred = self.qf1(t, b, obs, actions, z.detach())
+        q2_pred = self.qf2(t, b, obs, actions, z.detach())
         with torch.no_grad():
-            target_q1 = self.target_qf1(t, b, next_obs, next_actions, task_z)
-            target_q2 = self.target_qf2(t, b, next_obs, next_actions, task_z)
+            target_q1 = self.target_qf1(t, b, next_obs, next_actions, z)
+            target_q2 = self.target_qf2(t, b, next_obs, next_actions, z)
             target_q = torch.min(target_q1, target_q2)
             rewards_flat = rewards.view(self.batch_size * num_tasks, -1)
             # scale rewards for Bellman update
@@ -321,7 +379,7 @@ class GENTLE(OfflineMetaRLAlgorithm):
         self.qf1_optimizer.step()
         self.qf2_optimizer.step()
         if self._num_steps % self.policy_freq == 0:
-            Q = self._min_q(t, b, obs, new_actions, task_z)
+            Q = self._min_q(t, b, obs, new_actions, z)
             lmbda = self.bc_weight/Q.abs().mean().detach()
             policy_loss = -lmbda * Q.mean()
             bc_loss = F.mse_loss(new_actions, actions)

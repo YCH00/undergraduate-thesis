@@ -209,7 +209,7 @@ class Agent(nn.Module):
             task_z = [z.repeat(b, 1) for z in task_z]
             task_z = torch.cat(task_z, dim=0)
         # run policy, get log probs and new actions
-        in_ = torch.cat([obs, task_z.detach()], dim=1)
+        in_ = torch.cat([obs, task_z.detach()], dim=1)  # [num_tasks * batch_size, obs_dim + z_dim]
         policy_outputs = self.target_policy(t, b, in_, deterministic=True, reparameterize=True, return_log_prob=True)
         return policy_outputs[0]
 

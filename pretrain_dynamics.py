@@ -82,7 +82,7 @@ def experiment(variant, seed=None):
         # print("found traj files:", len(train_trj_paths))
         # print(train_trj_paths[:10])
         # return
-        
+
         train_paths = [train_trj_path for train_trj_path in train_trj_paths if
                        int(train_trj_path.split('/')[-2].split('goal_idx')[-1]) in train_tasks]
         train_task_idxs = [int(train_trj_path.split('/')[-2].split('goal_idx')[-1]) for train_trj_path in train_trj_paths if

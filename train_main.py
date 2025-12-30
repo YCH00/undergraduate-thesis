@@ -24,6 +24,10 @@ from configs.default import default_config
 from numpy.random import default_rng
 from rlkit.torch.algo.gentle import GENTLE
 
+from rlkit.torch.encoder import RNNEncoder, MLPEncoder
+from rlkit.torch.decoder import FOCALDecoder
+
+
 rng = default_rng()
 
 def global_seed(seed=0):
@@ -56,14 +60,29 @@ def experiment(variant, seed=None):
 
     ptu.set_gpu_mode(variant['util_params']['use_gpu'], variant['util_params']['gpu_id'])
 
-    context_encoder = MlpEncoder(
-            hidden_sizes=[net_size, net_size, net_size],
-            input_size=context_encoder_input_dim,
-            output_size=context_encoder_output_dim,
-            output_activation=torch.tanh,
-            batch_attention=False,
-    )
+    # context_encoder = MlpEncoder(
+    #         hidden_sizes=[net_size, net_size, net_size],
+    #         input_size=context_encoder_input_dim,
+    #         output_size=context_encoder_output_dim,
+    #         output_activation=torch.tanh,
+    #         batch_attention=False,
+    # )
 
+    work_dir = os.getcwd()
+    save_dir = os.path.join(
+        work_dir,
+        'gentle_data/asset/dynamics',
+        variant['env_name'],
+        f'expert_seed{seed}'
+    )
+    # YinCH_todo: device如何添加
+    if variant['encoder_type'] == 'rnn':
+        encoder = RNNEncoder.load(save_dir+'/encoder.pth')
+    elif variant['encoder_type'] == 'mlp':
+        encoder = MLPEncoder.load(save_dir+'/encoder.pth')
+
+    decoder = FOCALDecoder.load(save_dir+'/decoder.pth')
+    
     qf1 = FlattenMlp(
         hidden_sizes=[net_size, net_size, net_size],
         input_size=obs_dim + action_dim + latent_dim,
@@ -75,35 +94,35 @@ def experiment(variant, seed=None):
         output_size=1,
     )
 
-    context_decoder = MlpDecoder(hidden_size=net_size,
-                                    num_hidden_layers=3,
-                                    z_dim=latent_dim,
-                                    action_dim=action_dim,
-                                    obs_dim=obs_dim,
-                                    reward_dim=1,
-                                    use_next_obs_in_context=use_next_obs_in_context)
+    # context_decoder = MlpDecoder(hidden_size=net_size,
+    #                                 num_hidden_layers=3,
+    #                                 z_dim=latent_dim,
+    #                                 action_dim=action_dim,
+    #                                 obs_dim=obs_dim,
+    #                                 reward_dim=1,
+    #                                 use_next_obs_in_context=use_next_obs_in_context)
 
-    if use_next_obs_in_context:
-        task_dynamics =  MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
-                                     hidden_size=net_size, 
-                                     num_hidden_layers=3, 
-                                     action_dim=action_dim, 
-                                     obs_dim=obs_dim,
-                                     reward_dim=1,
-                                     use_next_obs_in_context=use_next_obs_in_context,
-                                     ensemble_size=variant['algo_params']['ensemble_size'],
-                                     dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5, 7.5e-5])
-    else:
-        task_dynamics = MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
-                                     hidden_size=net_size, 
-                                     num_hidden_layers=2, 
-                                     action_dim=action_dim, 
-                                     obs_dim=obs_dim,
-                                     reward_dim=1,
-                                     use_next_obs_in_context=use_next_obs_in_context,
-                                     ensemble_size=variant['algo_params']['ensemble_size'],
-                                     dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5])
-    task_dynamics.load('/home/autolab/YinCH/GENTLE/gentle_data/asset/dynamics/'+variant['env_name']+'/'+f'expert_seed{seed}')
+    # if use_next_obs_in_context:
+    #     task_dynamics =  MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
+    #                                  hidden_size=net_size, 
+    #                                  num_hidden_layers=3, 
+    #                                  action_dim=action_dim, 
+    #                                  obs_dim=obs_dim,
+    #                                  reward_dim=1,
+    #                                  use_next_obs_in_context=use_next_obs_in_context,
+    #                                  ensemble_size=variant['algo_params']['ensemble_size'],
+    #                                  dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5, 7.5e-5])
+    # else:
+    #     task_dynamics = MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
+    #                                  hidden_size=net_size, 
+    #                                  num_hidden_layers=2, 
+    #                                  action_dim=action_dim, 
+    #                                  obs_dim=obs_dim,
+    #                                  reward_dim=1,
+    #                                  use_next_obs_in_context=use_next_obs_in_context,
+    #                                  ensemble_size=variant['algo_params']['ensemble_size'],
+    #                                  dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5])
+    # task_dynamics.load('/home/autolab/YinCH/GENTLE/gentle_data/asset/dynamics/'+variant['env_name']+'/'+f'expert_seed{seed}')
 
     policy = TanhGaussianPolicy(
         hidden_sizes=[net_size, net_size, net_size],
@@ -116,7 +135,7 @@ def experiment(variant, seed=None):
 
     agent = Agent(
         latent_dim,
-        context_encoder,
+        encoder,
         policy,
         **variant['algo_params']
     )
@@ -126,7 +145,7 @@ def experiment(variant, seed=None):
                     env=env,
                     train_tasks=list(tasks[:variant['n_train_tasks']]),
                     eval_tasks=list(tasks[-variant['n_eval_tasks']:]),
-                    nets=[agent, qf1, qf2, context_decoder, task_dynamics],
+                    nets=[agent, qf1, qf2, decoder],
                     latent_dim=latent_dim,
                     obs_normalizer=obs_normalizer,
                     **variant['algo_params']
