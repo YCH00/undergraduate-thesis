@@ -9,7 +9,7 @@ import torch.nn as nn
 import torchkit.pytorch_utils as ptu
 from gym.spaces import Box, Discrete, Tuple
 from itertools import product
-from environments.mujoco.rand_param_envs.gym.spaces.box import Box as rBox
+from rlkit.environments.mujoco.rand_param_envs.gym.spaces.box import Box as rBox
 
 
 def vertices(N):

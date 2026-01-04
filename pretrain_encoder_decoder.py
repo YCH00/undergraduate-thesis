@@ -20,6 +20,9 @@ from rlkit.data_management.env_replay_buffer import MultiTaskReplayBuffer
 from rlkit.torch.encoder import RNNEncoder, MLPEncoder
 from rlkit.torch.decoder import FOCALDecoder
 
+import gym
+
+
 rng = default_rng()
 
 def global_seed(seed=0):
@@ -49,9 +52,52 @@ def metric_loss(z, tasks, epsilon=1e-3):
     return pos_z_loss/(pos_cnt + epsilon) +  neg_z_loss/(neg_cnt + epsilon)
 
 
+def expand_variant_with_env(variant, include_act_space=False):
+    env_params = variant.get("env_params", {})
+    util_params = variant.get("util_params", {})
+
+    # env = make_env(
+    #     env_name=variant["env_name"],
+    #     max_rollouts_per_task=variant["max_rollouts_per_task"],
+    #     seed=util_params.get("seed", 0),
+    #     n_tasks=1
+    # )
+    
+    env = NormalizedBoxEnv(ENVS[variant['env_name']](**variant['env_params']))
+
+    # ===== action space =====
+    if isinstance(env.action_space, gym.spaces.Discrete):
+        variant["action_dim"] = 1
+        variant["act_space_n"] = env.action_space.n
+    else:
+        variant["action_dim"] = env.action_space.shape[0]
+        variant["act_space_n"] = None
+
+    # ===== observation =====
+    variant["obs_dim"] = env.observation_space.shape[0]
+
+    # ===== trajectory =====
+    variant["trajectory_len"] = (
+        env.unwrapped._max_episode_steps
+        * variant["max_rollouts_per_task"]
+    )
+
+    # ===== optional =====
+    variant["num_states"] = (
+        env.unwrapped.num_states
+        if hasattr(env.unwrapped, "num_states")
+        else None
+    )
+
+    if include_act_space:
+        variant["act_space"] = env.action_space
+
+    return variant, env
+
 
 def experiment(variant, seed=None):
-    env = NormalizedBoxEnv(ENVS[variant['env_name']](**variant['env_params']))
+    # env = NormalizedBoxEnv(ENVS[variant['env_name']](**variant['env_params']))
+    variant, env = expand_variant_with_env(variant)
     
     if seed is not None:
         global_seed(seed)
@@ -82,7 +128,7 @@ def experiment(variant, seed=None):
             hidden_size=variant['aggregator_hidden_size'],
             layers_after_gru=variant['layers_after_aggregator'],
             task_embedding_size=variant['task_embedding_size'],
-            action_size=variant['act_space']['n'] if variant['act_space'].__class__.__name__ == "Discrete" else variant['action_dim'], # fixed a bug?
+            action_size = variant["act_space_n"] if variant["act_space_n"] is not None else variant["action_dim"], # fixed a bug?
             action_embed_size=variant['action_embedding_size'],
             state_size=variant['obs_dim'],
             state_embed_size=variant['state_embedding_size'],
@@ -94,7 +140,7 @@ def experiment(variant, seed=None):
                 hidden_size=variant['aggregator_hidden_size'],
                 num_hidden_layers=2,
                 task_embedding_size=variant['task_embedding_size'],
-                action_size=variant['act_space']['n'] if variant['act_space'].__class__.__name__ == "Discrete" else variant['action_dim'],
+                action_size = variant["act_space_n"] if variant["act_space_n"] is not None else variant["action_dim"],
                 state_size=variant['obs_dim'],
                 reward_size=1,
                 term_size=1,
@@ -212,21 +258,33 @@ def experiment(variant, seed=None):
     # os.makedirs(work_dir+'/gentle_data/asset/dynamics/'+variant['env_name']+f'/expert_seed{seed}', exist_ok=True)
     # task_dynamics.save(work_dir+'/gentle_data/asset/dynamics/'+variant['env_name']+f'/expert_seed{seed}')
 
-    for _ in range(variant['num_iters']):
-        indices = np.random.choice(len(tasks), variant['meta_batch'])
-        for _ in range(variant['decoder_iter']):
+    for step1 in range(variant['num_iters']):
+        indices = np.random.choice(len(train_tasks), variant['meta_batch'])
+
+        for step2 in range(variant['decoder_iter']):
             # sample corresponding context batch. Here assume to use self.storage to provide context
 
-            obs_context, actions_context, rewards_context, next_obs_context, terms_context = [], [], [], [], []
+            # obs_context, actions_context, rewards_context, next_obs_context, terms_context = [], [], [], [], []
+            obs_data_list, action_data_list, reward_data_list, next_obs_data_list, terms_data_list= [], [], [], [], []
             for task_id in indices:
                 data = train_buffer.get_all_data(task_id)
-                obs_context += data["observations"]
-                actions_context += data["actions"]
-                rewards_context += data["next_observations"]
-                next_obs_context += data["rewards"]
-                terms_context += data["terminals"]
+                obs_data_list.append(torch.from_numpy(data["observations"]).float())
+                action_data_list.append(torch.from_numpy(data["actions"]).float())
+                reward_data_list.append(torch.from_numpy(data["rewards"]).float())
+                next_obs_data_list.append(torch.from_numpy(data["next_observations"]).float())
+                terms_data_list.append(torch.from_numpy(data["terminals"]).float())
+            min_bs = min(d.size(0) for d in obs_data_list)
+            obs_data_list = [d[:min_bs] for d in obs_data_list]
+            action_data_list = [d[:min_bs] for d in action_data_list]
+            reward_data_list = [d[:min_bs] for d in reward_data_list]
+            next_obs_data_list = [d[:min_bs] for d in next_obs_data_list]
+            terms_data_list = [d[:min_bs] for d in terms_data_list]
+            obs_context = torch.stack(obs_data_list, axis=0).to(ptu.device)
+            actions_context = torch.stack(action_data_list, axis=0).to(ptu.device)
+            rewards_context = torch.stack(reward_data_list, axis=0).to(ptu.device)
+            next_obs_context = torch.stack(next_obs_data_list, axis=0).to(ptu.device)
+            terms_context = torch.stack(terms_data_list, axis=0).to(ptu.device)
             
-
             #update context encoder with contrastive loss   
             task_encoding, encoder_loss = encoder.context_encoding(obs=obs_context, actions=actions_context, 
                 rewards=rewards_context, next_obs=next_obs_context, terms=terms_context)
@@ -237,6 +295,15 @@ def experiment(variant, seed=None):
                                             supervise_next_obs=next_obs_context,
                                             supervise_reward=rewards_context)
             # total_loss += self.args.beta_encoder * encoder_loss
+            
+            if step1*step2 % 100 == 0:
+                print(
+                    f"[Step {step1}.{step2}] "
+                    f"total_loss={total_loss.item():.4f}, "
+                    f"metric_loss={metric_loss(task_encoding, indices).item():.4f}, "
+                    f"supervised_loss={supervised_loss(task_embedding=task_encoding, input_obs=obs_context, input_action=actions_context, supervise_next_obs=next_obs_context, supervise_reward=rewards_context).item():.4f}")
+
+            
             finetune_encoder_decoder_optimizer.zero_grad()
             total_loss.backward()
             finetune_encoder_decoder_optimizer.step()
@@ -252,6 +319,7 @@ def experiment(variant, seed=None):
     os.makedirs(save_dir, exist_ok=True)
     encoder.save(save_dir+'/encoder.pth')
     decoder.save(save_dir+'/decoder.pth')
+    print("encoder and decoder saved successfully!")
 
 def deep_update_dict(fr, to):
     ''' update dict of dicts with new values '''

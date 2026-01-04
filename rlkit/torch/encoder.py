@@ -4,8 +4,8 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 from utils import helpers as utl
-from rlkit.torchkit import pytorch_utils as ptu
-from rlkit.torchkit.networks import Mlp, FlattenMlp
+from torchkit import pytorch_utils as ptu
+from torchkit.networks import Mlp, FlattenMlp
 import rlkit.torch.distributions as dist
 
 
