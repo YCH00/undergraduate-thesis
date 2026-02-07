@@ -256,16 +256,23 @@ class FOCALDecoder(nn.Module):
         x = x.view(E, T * B, -1)
 
         # -------- 3. dynamics & reward 预测 --------
-        delta_state_dist = self.dynamic_decoder(x)
-        reward_dist = self.reward_decoder(x)
+        delta_state_dist, _ = self.dynamic_decoder(x)
+        reward_dist, _ = self.reward_decoder(x)
 
-        # GaussianMLP 输出的是 Normal 分布
-        delta_state = delta_state_dist.mean      # [E, T*B, obs_dim]
-        reward = reward_dist.mean                # [E, T*B, 1]
+        # print('delta_state_dist: ', type(delta_state_dist), delta_state_dist.shape)
+        # print('reward_dist: ', type(reward_dist), reward_dist.shape)
+        # exit(0)
+        
+        # # GaussianMLP 输出的是 Normal 分布
+        # delta_state = delta_state_dist.mean      # [E, T*B, obs_dim]
+        # reward = reward_dist.mean                # [E, T*B, 1]
 
-        # -------- 4. ensemble 平均 --------
-        delta_state = delta_state.mean(dim=0)    # [T*B, obs_dim]
-        reward = reward.mean(dim=0)              # [T*B, 1]
+        # # -------- 4. ensemble 平均 --------
+        # delta_state = delta_state.mean(dim=0)    # [T*B, obs_dim]
+        # reward = reward.mean(dim=0)              # [T*B, 1]
+        delta_state = delta_state_dist    # [T*B, obs_dim]
+        reward = reward_dist              # [T*B, 1]
+
 
         # -------- 5. reshape 回 task 结构 --------
         delta_state = delta_state.view(T, B, -1)

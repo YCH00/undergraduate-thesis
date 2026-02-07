@@ -23,5 +23,94 @@
     },
     "util_params": {
         "use_gpu": 1
-    }
+    },
+
+    "seed": 0,
+
+    "num_train_tasks": 20,
+    "num_eval_tasks": 20,
+    "num_init_steps": 5000,
+    "max_rollouts_per_task": 1,
+    "num_trajs_per_task": null,
+
+    "meta_batch": 16,
+    "num_iters": 1000,
+    "num_online_steps": 500000,
+
+    "rl_updates_per_iter": 200,
+    "rl_batch_size": 256,
+    "dqn_layers": [256, 256],
+    "policy_layers": [256, 256],
+    "actor_lr": 0.0003,
+    "critic_lr": 0.0003,
+    "vf_lr": 0.0003,
+    "agent_sac": true,
+    "c_lr": 0.0001,
+    "c_iter": 3,
+    "clip_grad_value": null,
+    "entropy_alpha": 0.0,
+    "automatic_entropy_tuning": false,
+    "alpha_lr": null,
+    "gamma": 0.99,
+    "soft_target_tau": 0.005,
+    "eval_deterministic": true,
+    "onlinereplaysize": 50000,
+    "test_use_online": false,
+
+    "num_context_trajs": 1,
+    "encoder_lr": 0.0003,
+
+    "pearl_deterministic_encoder": true,
+    "encoder_type": "mlp",
+    "task_embedding_size": 5,
+    "enc_stochastic": true,
+    "aggregator_hidden_size": 64,
+    "layers_before_aggregator": [],
+    "layers_after_aggregator": [],
+    "action_embedding_size": 5,
+    "state_embedding_size": 5,
+    "reward_embedding_size": 5,
+
+    "relabel_type": "generative",
+    "cvae_hidden_size": 64,
+    "cvae_num_hidden_layers": 1,
+    "generative_model_path": "logs/HalfCheetahVel-v0/generative__0__30_05_23_33_04/models/model5.pt",
+    "aggregate_encoder_type": "selfattn",
+    "reward_std": 0.5,
+
+    "contrastive_batch_size": 64,
+    "n_negative_per_positive": 16,
+    "normalize_z": true,
+    "infonce_temp": 0.1,
+    "encoder_model_path": "logs/HalfCheetahVel-v0/contrastive_generative_normalize__0__01_06_00_16_03/models/encoder900.pt",
+
+    "use_additional_task_info": false,
+    "context_encoder_output_layers": 0,
+
+    "log_interval": 5,
+    "log_vis_interval": 100,
+    "save_interval": 100,
+    "save_model": true,
+    "log_tensorboard": true,
+    "log_train_time": false,
+    "use_gpu": true,
+    "results_log_dir": null,
+    "output_file_prefix": "offline",
+    "data_dir": "data",
+    "main_data_dir": "./batch_data",
+
+    "ensemble_size": 1,
+    "max_replay_size": 300000,
+    "use_decoder": true,
+    "beta_encoder": 0.15,
+    "decoder_iter": 1,
+
+    "use_cql": false,
+    "alpha_cql": 2.0,
+
+    "use_iql": false,
+    "quantile": 0.8,
+    "beta": 0.05,
+    "clip_score": 100
+
 }

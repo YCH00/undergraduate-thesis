@@ -36,9 +36,9 @@ save_video: false
 
 seed: 0
 
-
-# hydra configuration
-hydra:
-    name: ${env}
-    run:
-        dir: ./exp/${now:%Y.%m.%d}/${now:%H%M}_${agent.name}_${experiment}
+gpu_id: 0
+# # hydra configuration
+# hydra:
+#     name: ${env}
+#     run:
+#         dir: ./exp/${now:%Y.%m.%d}/${now:%H%M}_${agent.name}_${experiment}

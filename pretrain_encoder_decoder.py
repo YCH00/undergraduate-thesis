@@ -143,7 +143,7 @@ def experiment(variant, seed=None):
                 action_size = variant["act_space_n"] if variant["act_space_n"] is not None else variant["action_dim"],
                 state_size=variant['obs_dim'],
                 reward_size=1,
-                term_size=1,
+                term_size=0,
                 stochasity=variant['enc_stochastic']
             ).to(ptu.device)
     else:
@@ -334,7 +334,7 @@ def deep_update_dict(fr, to):
 @click.command()
 @click.argument('config', default=None)
 @click.option('--gpu', default=0)
-@click.option('--seed_list', default=[0])
+@click.option('--seed_list', default=[1])
 
 def main(config, gpu, seed_list):
 

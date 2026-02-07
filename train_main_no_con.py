@@ -22,7 +22,7 @@ from rlkit.launchers.launcher_util import setup_logger
 import rlkit.torch.pytorch_util as ptu
 from configs.default import default_config
 from numpy.random import default_rng
-from rlkit.torch.algo.gentle import GENTLE
+from rlkit.torch.algo.gentle_no_con import GENTLE
 
 from rlkit.torch.encoder import RNNEncoder, MLPEncoder
 from rlkit.torch.decoder import FOCALDecoder
@@ -190,7 +190,7 @@ def deep_update_dict(fr, to):
 @click.option('--gpu', default=0)
 @click.option('--debug', default=0)
 @click.option('--algo_type', default='gentle')  
-@click.option('--seed_list', default=[1])
+@click.option('--seed_list', default=[0])
 @click.option('--output_prefix', default='')
 def main(config, gpu, debug, algo_type, seed_list, output_prefix):
 

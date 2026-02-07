@@ -282,7 +282,46 @@ class MLPEncoder(nn.Module):
             self.log_var = nn.Parameter(torch.zeros(1, task_embedding_size), requires_grad=True)
 
     # input state transition sample, output task embedding
-    def forward(self, obs, action, reward, next_obs, term=None):
+    def forward(self, *args, **kwargs):
+        # 情况 1：encoder(context)
+        if len(args) == 1 and not kwargs:
+            context = args[0]
+            return self.forward_context(context)
+
+        # 情况 2：encoder(obs, action, reward, next_obs, term)
+        elif 4 <= len(args) <= 5:
+            obs, action, reward, next_obs = args[:4]
+            term = args[4] if len(args) == 5 else None
+            return self.forward_transition(obs, action, reward, next_obs, term)
+
+        else:
+            raise TypeError(
+                f"Invalid encoder forward call, args={len(args)}, kwargs={kwargs}"
+            )
+    
+    def forward_context(self, context):
+        if context.dim() == 3:
+            t, b, d = context.shape 
+            context = context.view(t*b, d)
+        # print(context.shape)
+        # print(self.state_size, self.action_size, self.reward_size, self.term_size)
+        # exit(0)
+        assert context.shape[1] == self.state_size*2+self.action_size+self.reward_size+self.term_size
+        out = self.encoder(context)
+        if self.stochasity:
+            var = self.log_var.expand_as(out).exp()
+            clamped_var = torch.clamp(var, 0.1, 10.0)
+            prob_dist = dist.Normal(out, clamped_var.sqrt())
+            out = prob_dist.rsample()
+        if not self.normalize:
+            if self.stochasity:
+                return out, prob_dist
+            else:
+                return out
+        else:
+            return F.normalize(out)
+
+    def forward_transition(self, obs, action, reward, next_obs, term=None):
         assert obs.shape[1] == self.state_size and action.shape[1] == self.action_size \
             and reward.shape[1] == self.reward_size and next_obs.shape[1] == self.state_size \
             and ((not self.use_termination) or (term.shape[1] == self.term_size))
@@ -294,7 +333,10 @@ class MLPEncoder(nn.Module):
             prob_dist = dist.Normal(out, clamped_var.sqrt())
             out = prob_dist.rsample()
         if not self.normalize:
-            return out, prob_dist
+            if self.stochasity:
+                return out, prob_dist
+            else:
+                return out
         else:
             return F.normalize(out)
 
@@ -303,20 +345,28 @@ class MLPEncoder(nn.Module):
     # output size: (task, z_dim)
     def context_encoding(self, obs, actions, rewards, next_obs, terms):
         n_timesteps, batch_size, _ = obs.shape 
-   
-        z, prob = self.forward(
-                obs.reshape(n_timesteps*batch_size, -1),
-                actions.reshape(n_timesteps*batch_size, -1),
-                rewards.reshape(n_timesteps*batch_size, -1),
-                next_obs.reshape(n_timesteps*batch_size, -1),
-                terms.reshape(n_timesteps*batch_size, -1)
-            )
+        if self.stochasity:
+            z, prob = self.forward(
+                    obs.reshape(n_timesteps*batch_size, -1),
+                    actions.reshape(n_timesteps*batch_size, -1),
+                    rewards.reshape(n_timesteps*batch_size, -1),
+                    next_obs.reshape(n_timesteps*batch_size, -1),
+                    terms.reshape(n_timesteps*batch_size, -1)
+                )
+        else:
+            z = self.forward(
+                    obs.reshape(n_timesteps*batch_size, -1),
+                    actions.reshape(n_timesteps*batch_size, -1),
+                    rewards.reshape(n_timesteps*batch_size, -1),
+                    next_obs.reshape(n_timesteps*batch_size, -1),
+                    terms.reshape(n_timesteps*batch_size, -1)
+                )
 
         z = F.tanh(z)
         z = z.reshape(n_timesteps, batch_size, -1)
         z = z.mean(0) # average over timesteps
         #print(z.shape)
-        return z, None       
+        return z, None
 
     def save(self, path):
         torch.save({

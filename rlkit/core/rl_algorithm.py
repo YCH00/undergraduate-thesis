@@ -691,6 +691,9 @@ class OfflineMetaRLAlgorithm(metaclass=abc.ABCMeta):
                 self.enc_replay_buffer.add_paths(self.task_idx, paths)
             if update_posterior_rate != np.inf:
                 context = self.sample_context(self.task_idx)
+                # print(type(context))
+                # print(context.shape)
+                # exit(0)
                 self.agent.infer_posterior(context, task_indices=np.array([self.task_idx]))
         self._n_env_steps_total += num_transitions
         gt.stamp('sample')

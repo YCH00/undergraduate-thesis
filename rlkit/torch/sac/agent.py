@@ -117,8 +117,8 @@ class Agent(nn.Module):
 
     def infer_posterior(self, context, task_indices=None):
         ''' compute q(z|c) as a function of input context and sample new z from it'''
-        params = self.context_encoder(context)
-        params = params.view(context.size(0), -1, self.context_encoder.output_size)
+        params, _ = self.context_encoder(context)
+        params = params.view(context.size(0), -1, self.context_encoder.task_embedding_size)
         if task_indices is None:
             self.task_indices = np.zeros((context.size(0),))
         elif not hasattr(task_indices, '__iter__'):
@@ -214,8 +214,8 @@ class Agent(nn.Module):
         return policy_outputs[0]
 
     def infer_z(self, context, task_indices=None, b=1):
-        params = self.context_encoder(context)
-        params = params.view(context.size(0), -1, self.context_encoder.output_size)
+        params, _ = self.context_encoder(context)
+        params = params.view(context.size(0), -1, self.context_encoder.task_embedding_size)
         if task_indices is None:
             task_indices = np.zeros((context.size(0),))
         elif not hasattr(task_indices, '__iter__'):
@@ -247,7 +247,7 @@ class Agent(nn.Module):
     @torch.no_grad()
     def infer_z_unpooling(self, context):
         params = self.context_encoder(context)
-        params = params.view(context.size(0), -1, self.context_encoder.output_size)
+        params = params.view(context.size(0), -1, self.context_encoder.task_embedding_size)
         return params
 
     def get_current_z(self, b, return_mean=False):
@@ -258,3 +258,20 @@ class Agent(nn.Module):
         task_z = [z.repeat(b, 1) for z in task_z]
         task_z = torch.cat(task_z, dim=0)
         return task_z
+
+
+    def get_policy_action(self, obs, given_z):
+        task_z = given_z
+        # self.meta_batch * self.batch_size * dim(obs)
+        t, b, _ = obs.size()
+        obs = obs.view(t * b, -1)
+        # run policy, get log probs and new actions
+        # in_ = torch.cat([obs, task_z], dim=1)  # [num_tasks * batch_size, obs_dim + z_dim]
+        # policy_outputs = self.policy(t, b, in_, deterministic=False, reparameterize=True, return_log_prob=True)
+        in_ = torch.cat([obs, task_z.detach()], dim=1)
+        policy_outputs = self.policy(t, b, in_, reparameterize=True, return_log_prob=True)
+        return policy_outputs[0]
+    
+    def get_z(self, context):
+        z, _ = self.context_encoder(context)
+        return z

@@ -18,33 +18,6 @@ def set_module_mode(module, mode=False):
     for p in module.parameters():
         p.requires_grad = mode
 
-def taskwise_barlow_twins(Z1, Z2, num_tasks, batch_size, lambd=0.0051):
-    """
-    Z1, Z2: [num_tasks * batch_size, dim]
-    """
-    T = num_tasks
-    B = batch_size
-    D = Z1.size(-1)
-    eps = 1e-9
-
-    # remove batch redundancy
-    Z1 = Z1.view(T, B, D)[:, 0, :]   # [T, D]
-    Z2 = Z2.view(T, B, D)[:, 0, :]   # [T, D]
-
-    # normalize over task dimension
-    Z1n = (Z1 - Z1.mean(0)) / (Z1.std(0) + eps)
-    Z2n = (Z2 - Z2.mean(0)) / (Z2.std(0) + eps)
-
-    # cross-correlation
-    c = Z1n.T @ Z2n / T   # [D, D]
-
-    on_diag = (torch.diagonal(c) - 1).pow(2).sum()
-    off_diag = (c - torch.diag(torch.diagonal(c))).pow(2).sum()
-
-    loss = on_diag + lambd * off_diag
-    return loss
-
-
 
 class GENTLE(OfflineMetaRLAlgorithm):
     def __init__(
@@ -396,14 +369,11 @@ class GENTLE(OfflineMetaRLAlgorithm):
         z_final = z_task_mean_expand.contiguous().view(num_tasks * batch_size, z_dim)
         # print('z_final: ', z_final.shape)
         # exit(0)
+        
         # print('z_t: ', z_t.shape, z_t)
         # print('z_hat: ', z_hat.shape, z_hat)
         # exit(0)
-        
-        # consistency_loss = F.mse_loss(z_final, z_t)
-        consistency_loss = taskwise_barlow_twins(z_final, z_t, num_tasks, batch_size)
-        # consistency_loss = F.mse_loss(z_hat, z_t)
-        
+        consistency_loss = F.mse_loss(z_final, z_t)
         # self.consistency_optimizer.zero_grad()
         # consistency_loss.backward()
         # # (consistency_loss.detach()).backward()
@@ -479,7 +449,7 @@ class GENTLE(OfflineMetaRLAlgorithm):
             policy_loss = -lmbda * Q.mean()
             bc_loss = F.mse_loss(new_actions, actions)
             # YinCH_todo: 试试去掉bc_loss的情况，以及去掉consistency_loss的情况
-            policy_total_loss = consistency_loss + policy_loss + bc_loss
+            policy_total_loss = policy_loss + bc_loss
 
             # policy_total_loss = policy_loss + bc_loss
             self.loss["policy_loss"] = policy_loss.item()
