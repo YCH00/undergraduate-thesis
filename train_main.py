@@ -103,27 +103,27 @@ def experiment(variant, seed=None):
     #                                 reward_dim=1,
     #                                 use_next_obs_in_context=use_next_obs_in_context)
 
-    # if use_next_obs_in_context:
-    #     task_dynamics =  MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
-    #                                  hidden_size=net_size, 
-    #                                  num_hidden_layers=3, 
-    #                                  action_dim=action_dim, 
-    #                                  obs_dim=obs_dim,
-    #                                  reward_dim=1,
-    #                                  use_next_obs_in_context=use_next_obs_in_context,
-    #                                  ensemble_size=variant['algo_params']['ensemble_size'],
-    #                                  dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5, 7.5e-5])
-    # else:
-    #     task_dynamics = MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
-    #                                  hidden_size=net_size, 
-    #                                  num_hidden_layers=2, 
-    #                                  action_dim=action_dim, 
-    #                                  obs_dim=obs_dim,
-    #                                  reward_dim=1,
-    #                                  use_next_obs_in_context=use_next_obs_in_context,
-    #                                  ensemble_size=variant['algo_params']['ensemble_size'],
-    #                                  dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5])
-    # task_dynamics.load('/home/autolab/YinCH/GENTLE/gentle_data/asset/dynamics/'+variant['env_name']+'/'+f'expert_seed{seed}')
+    if use_next_obs_in_context:
+        task_dynamics =  MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
+                                     hidden_size=net_size, 
+                                     num_hidden_layers=3, 
+                                     action_dim=action_dim, 
+                                     obs_dim=obs_dim,
+                                     reward_dim=1,
+                                     use_next_obs_in_context=use_next_obs_in_context,
+                                     ensemble_size=variant['algo_params']['ensemble_size'],
+                                     dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5, 7.5e-5])
+    else:
+        task_dynamics = MultiTaskDynamics(num_tasks=variant['n_train_tasks'], 
+                                     hidden_size=net_size, 
+                                     num_hidden_layers=2, 
+                                     action_dim=action_dim, 
+                                     obs_dim=obs_dim,
+                                     reward_dim=1,
+                                     use_next_obs_in_context=use_next_obs_in_context,
+                                     ensemble_size=variant['algo_params']['ensemble_size'],
+                                     dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5])
+    task_dynamics.load('/root/tievnas/YinCH/GENTLE/gentle_data/asset/dynamics/'+variant['env_name']+'/'+f'expert_seed{seed}')
 
     policy = TanhGaussianPolicy(
         hidden_sizes=[net_size, net_size, net_size],
@@ -146,7 +146,7 @@ def experiment(variant, seed=None):
                     env=env,
                     train_tasks=list(tasks[:variant['n_train_tasks']]),
                     eval_tasks=list(tasks[-variant['n_eval_tasks']:]),
-                    nets=[agent, qf1, qf2, decoder],
+                    nets=[agent, qf1, qf2, decoder, task_dynamics],
                     latent_dim=latent_dim,
                     obs_normalizer=obs_normalizer,
                     **variant['algo_params']
@@ -190,7 +190,7 @@ def deep_update_dict(fr, to):
 @click.option('--gpu', default=0)
 @click.option('--debug', default=0)
 @click.option('--algo_type', default='gentle')  
-@click.option('--seed_list', default=[1])
+@click.option('--seed_list', default=[0,1,2,3])
 @click.option('--output_prefix', default='')
 def main(config, gpu, debug, algo_type, seed_list, output_prefix):
 

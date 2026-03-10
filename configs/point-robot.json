@@ -23,7 +23,7 @@
         "eval_epoch": 1e6,
         "sample": 1,
         "max_path_length": 20,
-        "data_dir": "/home/autolab/YinCH/GENTLE/gentle_data/point-robot",
+        "data_dir": "/root/tievnas/YinCH/GENTLE/gentle_data/point-robot",
         "online_sample_num": 20
     }
 }

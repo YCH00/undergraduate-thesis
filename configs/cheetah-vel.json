@@ -15,7 +15,7 @@
         "num_train_steps_per_itr": 400,
         "embedding_batch_size": 256,
         "embedding_mini_batch_size": 256,
-        "data_dir": "/home/autolab/YinCH/GENTLE/gentle_data/cheetah-vel/",
+        "data_dir": "/root/tievnas/YinCH/GENTLE/gentle_data/cheetah-vel/",
         "sample": 1,
         "train_epoch": 1e6,
         "eval_epoch": 1e6,

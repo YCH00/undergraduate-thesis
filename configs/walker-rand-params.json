@@ -19,7 +19,7 @@
         "embedding_batch_size": 256,
         "embedding_mini_batch_size": 256,
         "sample":1,
-        "data_dir": "/home/autolab/YinCH/GENTLE/gentle_data/walker-rand-params",
+        "data_dir": "/root/tievnas/YinCH/GENTLE/gentle_data/walker-rand-params",
         "train_epoch": 1e6,
         "eval_epoch": 1e6,
         "n_trj": 50

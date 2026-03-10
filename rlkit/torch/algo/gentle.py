@@ -97,7 +97,7 @@ class GENTLE(OfflineMetaRLAlgorithm):
         self.target_qf1 = copy.deepcopy(self.qf1)
         self.target_qf2 = copy.deepcopy(self.qf2)
         self.context_decoder = nets[3]
-        # self.task_dynamics = nets[4]
+        self.task_dynamics = nets[4]
         self.policy_optimizer               = optimizer_class(self.agent.policy.parameters(), lr=self.policy_lr)
         self.consistency_optimizer = optimizer_class(self.agent.policy.parameters(), lr=self.policy_lr)
         self.qf1_optimizer                  = optimizer_class(self.qf1.parameters(), lr=self.qf_lr)
@@ -109,7 +109,7 @@ class GENTLE(OfflineMetaRLAlgorithm):
         self._visit_num_steps_train         = 10
         # self.show_detail = False
 
-        # self.relabel_buffer     = MultiTaskContextBuffer(self.relabel_buffer_size, env, self.train_tasks, kwargs['context_dim'])
+        self.relabel_buffer     = MultiTaskContextBuffer(self.relabel_buffer_size, env, self.train_tasks, kwargs['context_dim'])
 
         # freeze encoder and decoder
         # set_module_mode(self.agent.context_encoder, False)
@@ -130,8 +130,8 @@ class GENTLE(OfflineMetaRLAlgorithm):
             device = ptu.device
         for net in self.networks:
             net.to(device)
-        # if self.task_dynamics is not None:
-        #     self.task_dynamics.to(device)
+        if self.task_dynamics is not None:
+            self.task_dynamics.to(device)
 
     def print_networks(self, net):
         print('---------- Networks initialized -------------')
@@ -173,7 +173,7 @@ class GENTLE(OfflineMetaRLAlgorithm):
         # make method work given a single task index
         if not hasattr(indices, '__iter__'):
             indices = [indices]
-        batches = [ptu.np_to_pytorch_batch(self.train_buffer.random_batch(idx, batch_size=self.embedding_batch_size if b_size is None else b_size)) for idx in indices]
+        batches = [ptu.np_to_pytorch_batch(self.enc_replay_buffer.random_batch(idx, batch_size=self.embedding_batch_size if b_size is None else b_size)) for idx in indices]
         context = [self.unpack_batch(batch, sparse_reward=self.sparse_rewards) for batch in batches]
         # group like elements together
         context = [[x[i] for x in context] for i in range(len(context[0]))]
@@ -188,45 +188,45 @@ class GENTLE(OfflineMetaRLAlgorithm):
         # self.meta_batch * self.embedding_batch_size * sum_dim(o, a, r, no, t)
         return context
     
-    # def get_relabel_output(self, obs, actions, task_indices):
-    #     with torch.no_grad():
-    #         relabel_output, relabel_std = self.task_dynamics.step(obs, actions, task_indices, return_std=True)
-    #     return relabel_output, relabel_std
+    def get_relabel_output(self, obs, actions, task_indices):
+        with torch.no_grad():
+            relabel_output, relabel_std = self.task_dynamics.step(obs, actions, task_indices, return_std=True)
+        return relabel_output, relabel_std
 
-    # def make_relabel(self, _n=10):
-    #     sample_b_s = self.embedding_batch_size * _n
-    #     indices = np.array(self.train_tasks)
+    def make_relabel(self, _n=10):
+        sample_b_s = self.embedding_batch_size * _n
+        indices = np.array(self.train_tasks)
         
-    #     context_batch = np.concatenate([self.unpack_context_batch(self.train_buffer.random_batch(idx, sample_b_s)) for idx in indices])
-    #     context_batch = ptu.from_numpy(context_batch)
-    #     c_mb, c_b, _ = context_batch.shape
+        context_batch = np.concatenate([self.unpack_context_batch(self.train_buffer.random_batch(idx, sample_b_s)) for idx in indices])
+        context_batch = ptu.from_numpy(context_batch)
+        c_mb, c_b, _ = context_batch.shape
 
-    #     relabel_context = copy.deepcopy(context_batch)
-    #     relabel_obs = relabel_context[:,:,:self.obs_dim].view(c_mb * c_b, -1)
+        relabel_context = copy.deepcopy(context_batch)
+        relabel_obs = relabel_context[:,:,:self.obs_dim].view(c_mb * c_b, -1)
         
-    #     with torch.no_grad():
-    #         relabel_actions = self.agent.get_target_policy_action(relabel_context[:,:,:self.obs_dim], context_batch, task_indices=indices, reinfer=True)
+        with torch.no_grad():
+            relabel_actions = self.agent.get_target_policy_action(relabel_context[:,:,:self.obs_dim], context_batch, task_indices=indices, reinfer=True)
 
-    #     relabel_context[:,:,self.obs_dim:self.obs_dim+self.action_dim] = relabel_actions.reshape(c_mb, c_b, -1)
-    #     relabel_output, relabel_std = self.get_relabel_output(relabel_obs, relabel_actions, task_indices=indices)
+        relabel_context[:,:,self.obs_dim:self.obs_dim+self.action_dim] = relabel_actions.reshape(c_mb, c_b, -1)
+        relabel_output, relabel_std = self.get_relabel_output(relabel_obs, relabel_actions, task_indices=indices)
         
-    #     relabel_context[:,:,self.obs_dim+self.action_dim:] = relabel_output.view(c_mb, c_b, -1)
-    #     sorted_ind = torch.argsort(relabel_std, dim=-1)
-    #     sorted_relabel = torch.cat([relabel_context[i, sorted_ind[i], :] for i in range(c_mb)]).reshape(c_mb, c_b, -1)
+        relabel_context[:,:,self.obs_dim+self.action_dim:] = relabel_output.view(c_mb, c_b, -1)
+        sorted_ind = torch.argsort(relabel_std, dim=-1)
+        sorted_relabel = torch.cat([relabel_context[i, sorted_ind[i], :] for i in range(c_mb)]).reshape(c_mb, c_b, -1)
 
-    #     self.relabel_buffer.add_sample(indices, ptu.get_numpy(sorted_relabel))
+        self.relabel_buffer.add_sample(indices, ptu.get_numpy(sorted_relabel))
 
-    #     num_aug = self.num_aug_neg_tasks
-    #     all_neg_indices = np.array([np.random.choice(list(indices)[0:i] + list(indices)[i+1:], num_aug, replace=False) for i in range(len(indices))])
-    #     for i in range(num_aug):
-    #         neg_indices = all_neg_indices[:, i]
+        num_aug = self.num_aug_neg_tasks
+        all_neg_indices = np.array([np.random.choice(list(indices)[0:i] + list(indices)[i+1:], num_aug, replace=False) for i in range(len(indices))])
+        for i in range(num_aug):
+            neg_indices = all_neg_indices[:, i]
             
-    #         relabel_output, relabel_std = self.get_relabel_output(relabel_obs, relabel_actions, task_indices=neg_indices)
-    #         relabel_context[:,:,self.obs_dim+self.action_dim:] = relabel_output.view(c_mb, c_b, -1)
-    #         sorted_ind = torch.argsort(relabel_std, dim=-1)
-    #         sorted_relabel = torch.cat([relabel_context[i, sorted_ind[i], :] for i in range(c_mb)]).reshape(c_mb, c_b, -1)
+            relabel_output, relabel_std = self.get_relabel_output(relabel_obs, relabel_actions, task_indices=neg_indices)
+            relabel_context[:,:,self.obs_dim+self.action_dim:] = relabel_output.view(c_mb, c_b, -1)
+            sorted_ind = torch.argsort(relabel_std, dim=-1)
+            sorted_relabel = torch.cat([relabel_context[i, sorted_ind[i], :] for i in range(c_mb)]).reshape(c_mb, c_b, -1)
 
-    #         self.relabel_buffer.add_sample(neg_indices, ptu.get_numpy(sorted_relabel))
+            self.relabel_buffer.add_sample(neg_indices, ptu.get_numpy(sorted_relabel))
 
 
     ##### Training #####
@@ -237,17 +237,17 @@ class GENTLE(OfflineMetaRLAlgorithm):
         # zero out context and hidden encoder state
         self.agent.clear_z(num_tasks=len(indices))
 
-        # if self._n_train_steps_total % self.num_train_steps_per_itr == 0:
-        #     self.relabel_buffer.clear(self.train_tasks)
-        #     self.make_relabel()
+        if self._n_train_steps_total % self.num_train_steps_per_itr == 0:
+            self.relabel_buffer.clear(self.train_tasks)
+            self.make_relabel()
 
         # sample context batch
         relabel_data_size = int(self.embedding_batch_size * self.relabel_data_ratio)
-        # context_batch = self.sample_context(indices, b_size=self.embedding_batch_size-relabel_data_size)
-        context_batch = self.sample_context(indices, b_size=self.embedding_batch_size)  # context_batch_size: [num_tasks, embedding_batch_size, context_dim]
+        context_batch = self.sample_context(indices, b_size=self.embedding_batch_size-relabel_data_size)
+        # context_batch = self.sample_context(indices, b_size=self.embedding_batch_size)  # context_batch_size: [num_tasks, embedding_batch_size, context_dim]
         
-        # relabel_context = ptu.from_numpy(self.relabel_buffer.random_batch_task(relabel_data_size, indices))
-        # context_batch = torch.cat([context_batch, relabel_context], dim=1)
+        relabel_context = ptu.from_numpy(self.relabel_buffer.random_batch_task(relabel_data_size, indices))
+        context_batch = torch.cat([context_batch, relabel_context], dim=1)
 
         z_means_lst = []
         z_vars_lst = []
@@ -400,8 +400,8 @@ class GENTLE(OfflineMetaRLAlgorithm):
         # print('z_hat: ', z_hat.shape, z_hat)
         # exit(0)
         
-        # consistency_loss = F.mse_loss(z_final, z_t)
-        consistency_loss = taskwise_barlow_twins(z_final, z_t, num_tasks, batch_size)
+        consistency_loss = F.mse_loss(z_final, z_t)
+        # consistency_loss = taskwise_barlow_twins(z_final, z_t, num_tasks, batch_size)
         # consistency_loss = F.mse_loss(z_hat, z_t)
         
         # self.consistency_optimizer.zero_grad()
@@ -479,8 +479,9 @@ class GENTLE(OfflineMetaRLAlgorithm):
             policy_loss = -lmbda * Q.mean()
             bc_loss = F.mse_loss(new_actions, actions)
             # YinCH_todo: 试试去掉bc_loss的情况，以及去掉consistency_loss的情况
-            policy_total_loss = consistency_loss + policy_loss + bc_loss
-
+            # policy_total_loss = consistency_loss + policy_loss + bc_loss
+            # policy_total_loss = policy_loss + bc_loss
+            policy_total_loss = consistency_loss + policy_loss
             # policy_total_loss = policy_loss + bc_loss
             self.loss["policy_loss"] = policy_loss.item()
             # self.loss['consistency_loss'] = consistency_loss.item()

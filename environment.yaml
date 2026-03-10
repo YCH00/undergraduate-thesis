@@ -1,4 +1,4 @@
-name: gentle2
+name: gentle
 channels:
   - conda-forge
   - defaults

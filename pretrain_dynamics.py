@@ -148,7 +148,7 @@ def deep_update_dict(fr, to):
 @click.command()
 @click.argument('config', default=None)
 @click.option('--gpu', default=0)
-@click.option('--seed_list', default=[0])
+@click.option('--seed_list', default=[0,1,2,3])
 
 def main(config, gpu, seed_list):
 

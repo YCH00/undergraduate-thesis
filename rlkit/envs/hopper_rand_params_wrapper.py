@@ -38,7 +38,7 @@ class HopperRandParamsWrappedEnv(HopperRandParamsEnv):
     def load_params(self, n_tasks):
         param_sets = []
         for i in range(n_tasks):
-            param = np.load(f'/home/autolab/YinCH/GENTLE/gentle_data/hopper-rand-params/goal_idx{i}/log.npy', allow_pickle=True)
+            param = np.load(f'/root/tievnas/YinCH/GENTLE/gentle_data/hopper-rand-params/goal_idx{i}/log.npy', allow_pickle=True)
             param_sets.append(param.item())
         return param_sets
 

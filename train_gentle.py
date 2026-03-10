@@ -103,7 +103,7 @@ def experiment(variant, seed=None):
                                      use_next_obs_in_context=use_next_obs_in_context,
                                      ensemble_size=variant['algo_params']['ensemble_size'],
                                      dynamics_weight_decay=[2.5e-5, 5e-5, 7.5e-5])
-    task_dynamics.load('/home/autolab/YinCH/GENTLE/gentle_data/asset/dynamics/'+variant['env_name']+'/'+f'expert_seed{seed}')
+    task_dynamics.load('/root/tievnas/YinCH/GENTLE/gentle_data/asset/dynamics/'+variant['env_name']+'/'+f'expert_seed{seed}')
 
     policy = TanhGaussianPolicy(
         hidden_sizes=[net_size, net_size, net_size],
