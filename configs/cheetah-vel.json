@@ -19,7 +19,8 @@
         "sample": 1,
         "train_epoch": 1e6,
         "eval_epoch": 1e6,
-        "n_trj": 50
+        "n_trj": 50,
+        "reward_scale": 1.0
     },
     "util_params": {
         "use_gpu": 1

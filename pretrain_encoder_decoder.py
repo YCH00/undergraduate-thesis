@@ -164,7 +164,10 @@ def experiment(variant, seed=None):
 
     def supervised_loss(task_embedding, input_obs, input_action, supervise_next_obs, supervise_reward):
 
-        task_embedding = task_embedding.repeat(len(input_obs), 1, 1).reshape(-1, variant['task_embedding_size'])
+        # task_embedding = task_embedding.repeat(len(input_obs), 1, 1).reshape(-1, variant['task_embedding_size'])
+        task_embedding = task_embedding.unsqueeze(0).repeat(input_obs.size(0), 1, 1)
+        task_embedding = task_embedding.reshape(-1, variant['task_embedding_size'])
+        
         input_obs = input_obs.reshape(-1, variant['obs_dim'])
         input_action = input_action.reshape(-1, variant['action_dim'])
         supervise_next_obs = supervise_next_obs.reshape(-1, variant['obs_dim'])
@@ -259,7 +262,7 @@ def experiment(variant, seed=None):
     # task_dynamics.save(work_dir+'/gentle_data/asset/dynamics/'+variant['env_name']+f'/expert_seed{seed}')
 
     for step1 in range(variant['num_iters']):
-        indices = np.random.choice(len(train_tasks), variant['meta_batch'])
+        indices = np.random.choice(train_tasks, size=variant['meta_batch'], replace=True)
 
         for step2 in range(variant['decoder_iter']):
             # sample corresponding context batch. Here assume to use self.storage to provide context
@@ -279,11 +282,17 @@ def experiment(variant, seed=None):
             reward_data_list = [d[:min_bs] for d in reward_data_list]
             next_obs_data_list = [d[:min_bs] for d in next_obs_data_list]
             terms_data_list = [d[:min_bs] for d in terms_data_list]
-            obs_context = torch.stack(obs_data_list, axis=0).to(ptu.device)
-            actions_context = torch.stack(action_data_list, axis=0).to(ptu.device)
-            rewards_context = torch.stack(reward_data_list, axis=0).to(ptu.device)
-            next_obs_context = torch.stack(next_obs_data_list, axis=0).to(ptu.device)
-            terms_context = torch.stack(terms_data_list, axis=0).to(ptu.device)
+            # obs_context = torch.stack(obs_data_list, axis=0).to(ptu.device)
+            # actions_context = torch.stack(action_data_list, axis=0).to(ptu.device)
+            # rewards_context = torch.stack(reward_data_list, axis=0).to(ptu.device)
+            # next_obs_context = torch.stack(next_obs_data_list, axis=0).to(ptu.device)
+            # terms_context = torch.stack(terms_data_list, axis=0).to(ptu.device)
+            obs_context = torch.stack(obs_data_list, dim=0).permute(1, 0, 2).to(ptu.device)
+            actions_context = torch.stack(action_data_list, dim=0).permute(1, 0, 2).to(ptu.device)
+            rewards_context = torch.stack(reward_data_list, dim=0).permute(1, 0, 2).to(ptu.device)
+            next_obs_context = torch.stack(next_obs_data_list, dim=0).permute(1, 0, 2).to(ptu.device)
+            terms_context = torch.stack(terms_data_list, dim=0).permute(1, 0, 2).to(ptu.device)
+            
             
             #update context encoder with contrastive loss   
             task_encoding, encoder_loss = encoder.context_encoding(obs=obs_context, actions=actions_context, 

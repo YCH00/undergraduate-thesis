@@ -6,7 +6,7 @@
         "n_tasks": 2
     },
     "algo_params": {
-        "meta_batch": 4,
+        "meta_batch": 2,
         "num_initial_steps": 2000,
         "num_steps_prior": 400,
         "num_steps_posterior": 0,
@@ -20,7 +20,8 @@
         "train_epoch": 1e6,
         "eval_epoch": 1e6,
         "n_trj": 100,
-        "num_aug_neg_tasks": 1
+        "num_aug_neg_tasks": 1,
+        "reward_scale": 1.0
     },
     "util_params": {
         "use_gpu": 1 
@@ -33,7 +34,7 @@
     "max_rollouts_per_task": 1,
     "num_trajs_per_task": null,
 
-    "meta_batch": 16,
+    "meta_batch": 2,
     "num_iters": 1000,
 
     "rl_updates_per_iter": 200,

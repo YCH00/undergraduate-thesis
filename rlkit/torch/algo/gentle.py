@@ -111,9 +111,10 @@ class GENTLE(OfflineMetaRLAlgorithm):
 
         self.relabel_buffer     = MultiTaskContextBuffer(self.relabel_buffer_size, env, self.train_tasks, kwargs['context_dim'])
 
-        # freeze encoder and decoder
-        # set_module_mode(self.agent.context_encoder, False)
-        # set_module_mode(self.context_decoder, False)
+        self.policy_q_weight = kwargs.get('policy_q_weight', 1.0)
+        self.bc_loss_weight = kwargs.get('bc_loss_weight', 1.0)
+        self.consistency_weight = kwargs.get('consistency_weight', 0.1)
+
 
     ###### Torch stuff #####
     @property
@@ -374,8 +375,9 @@ class GENTLE(OfflineMetaRLAlgorithm):
         
         # until now, we have (obs, action_tilde, reward_tilde, next_obs_tilde)
         # virtual_context: [num_tasks, batch_size, obs_dim + action_dim + reward_dim + obs_dim]
+        # 只有action_tilde_expand有梯度
         virtual_context = torch.cat(
-            [obs, action_tilde_expanded, reward_tilde, next_obs_tilde],  # 只有action_tilde_expand有梯度
+            [obs, action_tilde_expanded, reward_tilde, next_obs_tilde],
             dim=-1
         )
         # print('virtual_context: ', virtual_context.shape)
@@ -474,25 +476,55 @@ class GENTLE(OfflineMetaRLAlgorithm):
         self.qf1_optimizer.step()
         self.qf2_optimizer.step()
         if self._num_steps % self.policy_freq == 0:
+
             Q = self._min_q(t, b, obs, new_actions, z)
             lmbda = self.bc_weight/Q.abs().mean().detach()
             policy_loss = -lmbda * Q.mean()
             bc_loss = F.mse_loss(new_actions, actions)
             # YinCH_todo: 试试去掉bc_loss的情况，以及去掉consistency_loss的情况
-            # policy_total_loss = consistency_loss + policy_loss + bc_loss
+            policy_total_loss = 0.5*consistency_loss + policy_loss + bc_loss
             # policy_total_loss = policy_loss + bc_loss
-            policy_total_loss = consistency_loss + policy_loss
+            # policy_total_loss = consistency_loss + policy_loss
             # policy_total_loss = policy_loss + bc_loss
+            
+            # det_actions = torch.tanh(policy_mean)
+
+            # Q = self._min_q(t, b, obs, det_actions, z)
+            # q_scale = Q.abs().mean().detach()
+            # lmbda = self.bc_weight / (q_scale + 1e-6)
+            # lmbda = torch.clamp(lmbda, max=10.0)
+
+            # policy_loss = -lmbda * Q.mean()
+            # bc_loss = F.mse_loss(det_actions, actions)
+
+            # policy_total_loss = (
+            #     self.policy_q_weight * policy_loss
+            #     + self.bc_loss_weight * bc_loss
+            #     + self.consistency_weight * consistency_loss
+            # )
+
+
             self.loss["policy_loss"] = policy_loss.item()
             # self.loss['consistency_loss'] = consistency_loss.item()
             # self.loss['policy_loss+bc_loss'] = (policy_loss + bc_loss).item()
             self.loss["bc_loss"] = bc_loss.item()
             self.loss["consistency_loss"] = consistency_loss.item()
             self.loss['policy_total_loss'] = policy_total_loss.item()
+            self.loss["policy_q_mean"] = Q.mean().item()
+            self.loss["policy_lambda"] = lmbda.item()
+            
+            set_module_mode(self.qf1, False)
+            set_module_mode(self.qf2, False)
+            set_module_mode(self.agent.context_encoder, False)
+            
             self.policy_optimizer.zero_grad()
             torch.autograd.set_detect_anomaly(True)
             policy_total_loss.backward()
             self.policy_optimizer.step()
+            
+            set_module_mode(self.qf1, True)
+            set_module_mode(self.qf2, True)
+            set_module_mode(self.agent.context_encoder, True)
 
             self._update_target_network(self.qf1, self.target_qf1)
             self._update_target_network(self.qf2, self.target_qf2)

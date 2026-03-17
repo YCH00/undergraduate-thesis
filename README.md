@@ -23,7 +23,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/.mujoco/mjpro${VERSION_NUM}/bin
 Example of training behavior policies on multiple tasks:
 
 ```bash
-python policy_train.py ./configs/ant-dir.json --gpu 0
+python policy_train.py ./configs/cheetah-dir.json --gpu 0
 ```
 
 It will run SAC to train a policy on each task, you can modify `self.work_dir` of `Workspace` in `rlkit/torch/sac/pytorch_sac/train.py` to specify the directory to save the trained policies.
@@ -31,7 +31,7 @@ It will run SAC to train a policy on each task, you can modify `self.work_dir` o
 Generate trajectories from trained policies:
 
 ```bash
-python policy_eavl.py --config ./configs/ant-dir.json
+python policy_eavl.py --config ./configs/cheetah-dir.json
 ```
 
 Data will be saved in `self.work_dir/gentle_data/$env_name/$goal_idx{i}`
@@ -40,11 +40,17 @@ Data will be saved in `self.work_dir/gentle_data/$env_name/$goal_idx{i}`
 
 The configration files to run GENTLE is in `./configs`. For example, to train GENTLE on Ant-Dir, first you need to pretrain the dynamics model:
 ```bash
-python pretrain_dynamics.py ./configs/ant-dir.json 
+python pretrain_dynamics.py ./configs/cheetah-dir.json 
 ```
+
+pretrain encoder and decoder
+```bash
+python pretrain_encoder_decoder.py ./configs/cheetah-dir.json 
+```
+
 Then run:
 ```bash
-python train_gentle.py ./configs/ant-dir.json
+python train_main.py ./configs/cheetah-dir.json
 ```
 
 Logs will be written to `./logs/ant-dir/gentle/`
